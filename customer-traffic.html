@@ -2,7 +2,8 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Demo</title>
+<title>客数</title>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
 
 <!-- Step 1) Load D3.js -->
 <script src="https://d3js.org/d3.v5.min.js"></script>
@@ -20,18 +21,60 @@
 </head>
 <body>
 
+<p>客数の傾向</p>
+<div id="trend"></div>
 <div id="chart"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.1.2/papaparse.min.js"></script>
 <script>
+Papa.parse("./customer_traffic.csv", {
+  download: true,
+  complete: function(results) {
+    console.log(results.data)
+    const trend = results.data.filter((_,i) => i > 0)
+    .reduce((ax, x) => {
+      return ax.map((a, j) => {
+        const n = Number(x[j + 1])
+        return a + (Number.isNaN(n) ? 0 : n)
+      });
+    }, [0,0])
+    console.log(trend)
+    const rate = ((trend[0]/trend[1] - 1) * 100).toFixed(2)
+    const color = rate < 0 ? 'red' : 'blue'
+    const direction = rate < 0 ? '↓' : '↑'
+    document.getElementById('trend').innerHTML = `${trend[0].toLocaleString()} <span style="color:${color};">${direction}${Math.abs(rate)}%</span>`;
+  }
+});
+
 var chart = bb.generate({
     bindto: "#chart",
+    title: {
+      text: "レジ通過客数"
+    },
     data: {
-        type: "bar",
-        columns: [
-            ["data1", 30, 200, 100, 170, 150, 250],
-            ["data2", 130, 100, 140, 35, 110, 50]
-        ]
-    }
+        x: "x",
+        url: "./customer_traffic.csv",
+        colors: {
+          "現在の期間": "rgb(0,199,60)",
+          "前の期間": "#666666",
+        },
+        regions: {
+          "前の期間": [
+            {
+              start: 0,
+            },
+          ]
+        }
+    },
+    axis: {
+      x: {
+        type: "timeseries",
+        tick: {
+          rotate: 45,
+          format: "%y-%m-%d"
+        }
+      }
+    },
 });
 </script>
 </body>
