@@ -27,7 +27,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.1.2/papaparse.min.js"></script>
 <script>
-Papa.parse("./customer_traffic.csv", {
+const time = (new Date()).getTime();
+
+Papa.parse(`./customer_traffic.csv?${time}`, {
   download: true,
   complete: function(results) {
     console.log(results.data)
@@ -53,7 +55,7 @@ var chart = bb.generate({
     },
     data: {
         x: "x",
-        url: "./customer_traffic.csv",
+        url: `./customer_traffic.csv?${time}`,
         colors: {
           "現在の期間": "rgb(0,199,60)",
           "前の期間": "#666666",
