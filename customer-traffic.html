@@ -20,14 +20,26 @@
 </style>
 </head>
 <body>
-
-<p>客数の傾向</p>
-<div id="trend"></div>
-<div id="chart"></div>
+  <div class="container-fluid">
+    <h1>客数の傾向</h1>
+    <div class="alert alert-success" role="alert">
+      <div id="trend"></div>
+    </div>
+    <div id="chart"></div>
+  </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.1.2/papaparse.min.js"></script>
 <script>
 const time = (new Date()).getTime();
+const arrowUpRight = `
+<svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-arrow-up-right" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" d="M14 2.5a.5.5 0 0 0-.5-.5h-6a.5.5 0 0 0 0 1h4.793L2.146 13.146a.5.5 0 0 0 .708.708L13 3.707V8.5a.5.5 0 0 0 1 0v-6z"/>
+</svg>`;
+
+const arrowDownRight = `
+<svg width="1em" height="1em" viewBox="0 0 16 16" class="bi bi-arrow-down-right" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <path fill-rule="evenodd" d="M14 13.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1 0-1h4.793L2.146 2.854a.5.5 0 1 1 .708-.708L13 12.293V7.5a.5.5 0 0 1 1 0v6z"/>
+</svg>`;
 
 Papa.parse(`./customer_traffic.csv?${time}`, {
   download: true,
@@ -43,8 +55,8 @@ Papa.parse(`./customer_traffic.csv?${time}`, {
     console.log(trend)
     const rate = ((trend[0]/trend[1] - 1) * 100).toFixed(2)
     const color = rate < 0 ? 'red' : 'blue'
-    const direction = rate < 0 ? '↓' : '↑'
-    document.getElementById('trend').innerHTML = `${trend[0].toLocaleString()} <span style="color:${color};">${direction}${Math.abs(rate)}%</span>`;
+    const direction = rate < 0 ? arrowDownRight : arrowUpRight;
+    document.getElementById('trend').innerHTML = `${trend[0].toLocaleString()} <span class="badge badge-light" style="color:${color};">${direction}${Math.abs(rate)}%</span>`;
   }
 });
 
