@@ -53,7 +53,7 @@ function term() {
     }, [])
     console.log(rows)
     console.log(source)
-    writeAsCsv({path: "../customer_traffic.csv",source: source})
+    writeAsCsv({path: "customer_traffic.csv",source: source})
   } catch (e) {
     console.log(e);
   } finally {
