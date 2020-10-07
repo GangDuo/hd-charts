@@ -41,33 +41,34 @@ const arrowDownRight = `
   <path fill-rule="evenodd" d="M14 13.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1 0-1h4.793L2.146 2.854a.5.5 0 1 1 .708-.708L13 12.293V7.5a.5.5 0 0 1 1 0v6z"/>
 </svg>`;
 
-Papa.parse(`./customer_traffic.csv?${time}`, {
-  download: true,
-  complete: function(results) {
-    console.log(results.data)
-    const trend = results.data.filter((_,i) => i > 0)
-    .reduce((ax, x) => {
-      return ax.map((a, j) => {
-        const n = Number(x[j + 1])
-        return a + (Number.isNaN(n) ? 0 : n)
-      });
-    }, [0,0])
-    console.log(trend)
-    const rate = ((trend[0]/trend[1] - 1) * 100).toFixed(2)
-    const color = rate < 0 ? 'red' : 'blue'
-    const direction = rate < 0 ? arrowDownRight : arrowUpRight;
-    document.getElementById('trend').innerHTML = `${trend[0].toLocaleString()} <span class="badge badge-light" style="color:${color};">${direction}${Math.abs(rate)}%</span>`;
-  }
-});
+function onRendered() {
+  console.log(this); // chart instance itself
 
-var chart = bb.generate({
+  const sumArray = xs => xs.map(x => Number(x))
+    .filter(n => !Number.isNaN(n))
+    .reduce((ax, n) => {
+      ax += n
+      return ax
+    }, 0)
+
+  const columns = this.data().map(x => x.id)
+  var trend = columns.map(col => sumArray(this.data.values(col)))
+  console.log(trend)
+  const rate = ((trend[0]/trend[1] - 1) * 100).toFixed(2)
+  const color = rate < 0 ? 'red' : 'blue'
+  const direction = rate < 0 ? arrowDownRight : arrowUpRight;
+  document.getElementById('trend').innerHTML = `${trend[0].toLocaleString()} <span class="badge badge-light" style="color:${color};">${direction}${Math.abs(rate)}%</span>`;
+}
+
+function drawChart(file) {
+   var chart = bb.generate({
     bindto: "#chart",
     title: {
       text: "レジ通過客数"
     },
     data: {
         x: "x",
-        url: `./customer_traffic.csv?${time}`,
+        url: `${file}?${time}`,
         colors: {
           "現在の期間": "rgb(0,199,60)",
           "前の期間": "#666666",
@@ -89,7 +90,10 @@ var chart = bb.generate({
         }
       }
     },
-});
+    onrendered: onRendered
+  });
+}
+drawChart('./customer_traffic.csv')
 </script>
 </body>
 </html>
