@@ -4,8 +4,6 @@ const fs = require("fs");
 const { AsyncParser } = require("json2csv");
 const { Readable } = require('stream');
 
-const ONE_WEEK = 7;
-
 const commandText = `
   SELECT DATE_FORMAT(\`date\`, '%Y-%m-%d') AS \`date\`,
          DAYOFWEEK(\`date\`) AS 'day_of_week',
@@ -26,11 +24,13 @@ function term() {
   return {
     beginDate: beginDate.format(pattern),
     endDate: endDate.format(pattern),
+    howManyDays: endDate.diff(beginDate, 'days') + 1
   }
 }
 
 (async function() {
-  const {beginDate, endDate} = term()
+  const {beginDate, endDate, howManyDays} = term()
+  const median = Math.floor(howManyDays / 2)
 
   const connection = await mysql.createConnection({
     host: process.env.HOST,
@@ -43,11 +43,11 @@ function term() {
   try {
     const rows = await connection.query(commandText, [beginDate, endDate]);
     const source = rows.reduce((ax, row, i)=>{
-      if(i < ONE_WEEK) {
+      if(i < median) {
         ax.push({"前の期間": row['customer_traffic']})
       } else {
-        ax[i - ONE_WEEK].x = row['date']
-        ax[i - ONE_WEEK]["現在の期間"] = row['customer_traffic']
+        ax[i - median].x = row['date']
+        ax[i - median]["現在の期間"] = row['customer_traffic']
       }
       return ax
     }, [])
