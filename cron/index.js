@@ -17,9 +17,10 @@ function term(n, options) {
   options = options || {}
   const key = options.key || 'days'
   const setDate = options.setDate || (ins => ins)
+  const setMonth = options.setMonth || (ins => ins)
   const pattern = "YYYY-MM-DD"
   const yesterday = () => moment().subtract(1, 'days')
-  let beginDate = setDate(moment().subtract(n, key))
+  let beginDate = setMonth(setDate(moment().subtract(n, key)))
   let endDate = yesterday()
 
   return {
@@ -39,12 +40,16 @@ async function generateDataSet({term, filename, commandText}) {
   })
   csv.transform((rows) => {
     const median = Math.floor(howMany / 2)
-    return rows.reduce((ax, row, i)=>{
+    return rows.reverse().reduce((ax, row, i)=>{
       if(i < median) {
-        ax.push({"前の期間": row['customer_traffic']})
+        ax.unshift({
+          x: row['date'],
+          "現在の期間": row['customer_traffic']
+        })
       } else {
-        ax[i - median].x = row['date']
-        ax[i - median]["現在の期間"] = row['customer_traffic']
+        const lastIndex = ax.length - 1
+        const renumbering = i - median
+        ax[lastIndex - renumbering]["前の期間"] = row['customer_traffic']
       }
       return ax
     }, [])
@@ -71,11 +76,28 @@ async function generateDataSet({term, filename, commandText}) {
     filename: 'year_customer_traffic.csv',
     commandText: `
     SELECT DATE_FORMAT(\`date\`, '%Y-%m-01') AS \`date\`,
-           count(distinct publicID) AS customer_traffic
+           count(publicID) AS customer_traffic
       FROM TJournals
      WHERE (\`date\` BETWEEN ? AND ?)
        AND (storeCD IN(SELECT code FROM stores WHERE isDM))
   GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-01')
+  ;`
+  },{
+    term: function(){
+      return term(19, {
+        key: 'years',
+        setDate: (ins) => ins.set('date', 1),
+        setMonth: (ins) => ins.set('month', 0)
+      })
+    },
+    filename: 'decade_customer_traffic.csv',
+    commandText: `
+    SELECT DATE_FORMAT(\`date\`, '%Y-01-01') AS \`date\`,
+           count(publicID) AS customer_traffic
+      FROM TJournals
+     WHERE (\`date\` BETWEEN ? AND ?)
+       AND (storeCD IN(SELECT code FROM stores WHERE isDM))
+  GROUP BY DATE_FORMAT(\`date\`, '%Y-01-01')
   ;`
   }].map(async x => await generateDataSet(x)))
 })()
