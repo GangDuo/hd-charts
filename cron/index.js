@@ -13,10 +13,10 @@ GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-%d'),
          DAYOFWEEK(\`date\`)
 ;`;
 
-function term() {
+function term(n) {
   const pattern = "YYYY-MM-DD"
   const yesterday = () => moment().subtract(1, 'days')
-  let beginDate = moment().subtract(14, 'days')
+  let beginDate = moment().subtract(n, 'days')
   let endDate = yesterday()
 
   return {
@@ -26,7 +26,7 @@ function term() {
   }
 }
 
-(async function() {
+async function generateDataSet({term, filename}) {
   const {beginDate, endDate, howManyDays} = term()
 
   const instance = new DataSource()
@@ -45,5 +45,15 @@ function term() {
       return ax
     }, [])
   })
-  await csv.save("customer_traffic.csv")
+  await csv.save(filename)
+}
+
+(async function() {
+  await Promise.all([{
+    term: function(){return term(14)},
+    filename: 'week_customer_traffic.csv'
+  },{
+    term: function(){return term(70)},
+    filename: 'month_customer_traffic.csv'
+  }].map(async x => await generateDataSet(x)))
 })()
