@@ -13,28 +13,32 @@ GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-%d'),
          DAYOFWEEK(\`date\`)
 ;`;
 
-function term(n) {
+function term(n, options) {
+  options = options || {}
+  const key = options.key || 'days'
+  const setDate = options.setDate || (ins => ins)
   const pattern = "YYYY-MM-DD"
   const yesterday = () => moment().subtract(1, 'days')
-  let beginDate = moment().subtract(n, 'days')
+  let beginDate = setDate(moment().subtract(n, key))
   let endDate = yesterday()
 
   return {
     beginDate: beginDate.format(pattern),
     endDate: endDate.format(pattern),
-    howManyDays: endDate.diff(beginDate, 'days') + 1
+    howMany: endDate.diff(beginDate, key) + 1,
+    key
   }
 }
 
-async function generateDataSet({term, filename}) {
-  const {beginDate, endDate, howManyDays} = term()
+async function generateDataSet({term, filename, commandText}) {
+  const {beginDate, endDate, howMany} = term()
 
   const instance = new DataSource()
   const csv = new CsvFile({
     json: await instance.fetch({commandText, beginDate, endDate})
   })
   csv.transform((rows) => {
-    const median = Math.floor(howManyDays / 2)
+    const median = Math.floor(howMany / 2)
     return rows.reduce((ax, row, i)=>{
       if(i < median) {
         ax.push({"前の期間": row['customer_traffic']})
@@ -51,9 +55,27 @@ async function generateDataSet({term, filename}) {
 (async function() {
   await Promise.all([{
     term: function(){return term(14)},
-    filename: 'week_customer_traffic.csv'
+    filename: 'week_customer_traffic.csv',
+    commandText
   },{
     term: function(){return term(70)},
-    filename: 'month_customer_traffic.csv'
+    filename: 'month_customer_traffic.csv',
+    commandText
+  },{
+    term: function(){
+      return term(23, {
+        key: 'months',
+        setDate: (ins) => ins.set('date', 1)
+      })
+    },
+    filename: 'year_customer_traffic.csv',
+    commandText: `
+    SELECT DATE_FORMAT(\`date\`, '%Y-%m-01') AS \`date\`,
+           count(distinct publicID) AS customer_traffic
+      FROM TJournals
+     WHERE (\`date\` BETWEEN ? AND ?)
+       AND (storeCD IN(SELECT code FROM stores WHERE isDM))
+  GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-01')
+  ;`
   }].map(async x => await generateDataSet(x)))
 })()
