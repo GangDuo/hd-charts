@@ -1,17 +1,7 @@
 const moment = require('moment');
 const DataSource = require('./DataSource');
 const CsvFile = require('./CsvFile');
-
-const commandText = `
-  SELECT DATE_FORMAT(\`date\`, '%Y-%m-%d') AS \`date\`,
-         DAYOFWEEK(\`date\`) AS 'day_of_week',
-         count(publicID) AS customer_traffic
-    FROM TJournals
-   WHERE (\`date\` BETWEEN ? AND ?)
-     AND (storeCD IN(SELECT code FROM stores WHERE isDM))
-GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-%d'),
-         DAYOFWEEK(\`date\`)
-;`;
+const QueryBuilder = require('./QueryBuilder');
 
 function term(n, options) {
   options = options || {}
@@ -31,8 +21,11 @@ function term(n, options) {
   }
 }
 
-async function generateDataSet({term, filename, commandText}) {
+async function generateDataSet({term, ...others}) {
   const {beginDate, endDate, howMany} = term()
+  const qb = new QueryBuilder(others)
+  const commandText = qb.sql
+  const filename = `${qb.termSymbol}_${qb.dataSourceName}.csv`
 
   const instance = new DataSource()
   const csv = new CsvFile({
@@ -44,12 +37,12 @@ async function generateDataSet({term, filename, commandText}) {
       if(i < median) {
         ax.unshift({
           x: row['date'],
-          "現在の期間": row['customer_traffic']
+          "現在の期間": row['value']
         })
       } else {
         const lastIndex = ax.length - 1
         const renumbering = i - median
-        ax[lastIndex - renumbering]["前の期間"] = row['customer_traffic']
+        ax[lastIndex - renumbering]["前の期間"] = row['value']
       }
       return ax
     }, [])
@@ -60,12 +53,9 @@ async function generateDataSet({term, filename, commandText}) {
 (async function() {
   await Promise.all([{
     term: function(){return term(14)},
-    filename: 'week_customer_traffic.csv',
-    commandText
   },{
     term: function(){return term(70)},
-    filename: 'month_customer_traffic.csv',
-    commandText
+    termSymbol: 'month'
   },{
     term: function(){
       return term(23, {
@@ -73,15 +63,7 @@ async function generateDataSet({term, filename, commandText}) {
         setDate: (ins) => ins.set('date', 1)
       })
     },
-    filename: 'year_customer_traffic.csv',
-    commandText: `
-    SELECT DATE_FORMAT(\`date\`, '%Y-%m-01') AS \`date\`,
-           count(publicID) AS customer_traffic
-      FROM TJournals
-     WHERE (\`date\` BETWEEN ? AND ?)
-       AND (storeCD IN(SELECT code FROM stores WHERE isDM))
-  GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-01')
-  ;`
+    termSymbol: 'year'
   },{
     term: function(){
       return term(19, {
@@ -90,14 +72,9 @@ async function generateDataSet({term, filename, commandText}) {
         setMonth: (ins) => ins.set('month', 0)
       })
     },
-    filename: 'decade_customer_traffic.csv',
-    commandText: `
-    SELECT DATE_FORMAT(\`date\`, '%Y-01-01') AS \`date\`,
-           count(publicID) AS customer_traffic
-      FROM TJournals
-     WHERE (\`date\` BETWEEN ? AND ?)
-       AND (storeCD IN(SELECT code FROM stores WHERE isDM))
-  GROUP BY DATE_FORMAT(\`date\`, '%Y-01-01')
-  ;`
+    termSymbol: 'decade'
+  },{
+    term: function(){return term(14)},
+    dataSourceName: 'sales'
   }].map(async x => await generateDataSet(x)))
 })()
