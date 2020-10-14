@@ -85,7 +85,6 @@ async function generateDataSet({...others}) {
       await Promise.all(xs.map(async x => await generateDataSet(x)))
     } else {
       await generateDataSet(xs)
-      break;
     }
     console.log('finish.')
   }
