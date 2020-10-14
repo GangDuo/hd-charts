@@ -1,79 +1,92 @@
-const mysql = require('promise-mysql');
 const moment = require('moment');
-const fs = require("fs");
-const { AsyncParser } = require("json2csv");
-const { Readable } = require('stream');
+const DataSource = require('./DataSource');
+const CsvFile = require('./CsvFile');
+const QueryBuilder = require('./QueryBuilder');
 
-const ONE_WEEK = 7;
+const terms = {
+  week: () => {return term(14)},
+  month: () => {return term(70)},
+  year: () => {
+    return term(23, {
+      key: 'months',
+      setDate: (ins) => ins.set('date', 1)
+    })
+  },
+  decade: () => {
+    return term(19, {
+      key: 'years',
+      setDate: (ins) => ins.set('date', 1),
+      setMonth: (ins) => ins.set('month', 0)
+    })
+  },
+}
 
-const commandText = `
-  SELECT DATE_FORMAT(\`date\`, '%Y-%m-%d') AS \`date\`,
-         DAYOFWEEK(\`date\`) AS 'day_of_week',
-         count(publicID) AS customer_traffic
-    FROM TJournals
-   WHERE (\`date\` BETWEEN ? AND ?)
-     AND (storeCD IN(SELECT code FROM stores WHERE isDM))
-GROUP BY DATE_FORMAT(\`date\`, '%Y-%m-%d'),
-         DAYOFWEEK(\`date\`)
-;`;
-
-function term() {
+function term(n, options) {
+  options = options || {}
+  const key = options.key || 'days'
+  const setDate = options.setDate || (ins => ins)
+  const setMonth = options.setMonth || (ins => ins)
   const pattern = "YYYY-MM-DD"
   const yesterday = () => moment().subtract(1, 'days')
-  let beginDate = moment().subtract(14, 'days')
+  let beginDate = setMonth(setDate(moment().subtract(n, key)))
   let endDate = yesterday()
 
   return {
     beginDate: beginDate.format(pattern),
     endDate: endDate.format(pattern),
+    howMany: endDate.diff(beginDate, key) + 1,
+    key
   }
 }
 
-(async function() {
-  const {beginDate, endDate} = term()
+async function generateDataSet({...others}) {
+  const qb = new QueryBuilder(others)
+  const commandText = qb.sql
+  const filename = `${qb.termSymbol}_${qb.dataSourceName}.csv`
+  const {beginDate, endDate, howMany} = terms[qb.termSymbol].call()
 
-  const connection = await mysql.createConnection({
-    host: process.env.HOST,
-    port: process.env.PORT,
-    user: process.env.USER,
-    password: process.env.PASSWORD,
-    database: process.env.DATABASE,
-  });
-
-  try {
-    const rows = await connection.query(commandText, [beginDate, endDate]);
-    const source = rows.reduce((ax, row, i)=>{
-      if(i < ONE_WEEK) {
-        ax.push({"前の期間": row['customer_traffic']})
+  const instance = new DataSource()
+  const csv = new CsvFile({
+    json: await instance.fetch({commandText, beginDate, endDate})
+  })
+  csv.transform((rows) => {
+    const median = Math.floor(howMany / 2)
+    return rows.reverse().reduce((ax, row, i)=>{
+      if(i < median) {
+        ax.unshift({
+          x: row['date'],
+          "現在の期間": row['value']
+        })
       } else {
-        ax[i - ONE_WEEK].x = row['date']
-        ax[i - ONE_WEEK]["現在の期間"] = row['customer_traffic']
+        const lastIndex = ax.length - 1
+        const renumbering = i - median
+        ax[lastIndex - renumbering]["前の期間"] = row['value']
       }
       return ax
     }, [])
-    console.log(rows)
-    console.log(source)
-    writeAsCsv({path: "customer_traffic.csv",source: source})
-  } catch (e) {
-    console.log(e);
-  } finally {
-    await connection.end();
+  })
+  await csv.save(filename)
+}
+
+(async function() {
+  const generateTuple = termSymbol => {
+    return ['customer_traffic', 'sales', 'average_spending_per_customer'].map(dataSourceName => {
+      return {dataSourceName, termSymbol}
+    })
+  }
+  const ax = ['week', 'month'].map(generateTuple)
+  // 非力なコンピュータで並列処理すると熱暴走するため分割処理
+  const bx = ['year', 'decade'].flatMap(generateTuple)
+  const cx = ax.concat(bx)
+  for (let i = 0; i < cx.length; i++) {
+    const xs = cx[i];
+    console.log(xs)
+    if(Array.isArray(xs)) {
+      await Promise.all(xs.map(async x => await generateDataSet(x)))
+    } else {
+      await generateDataSet(xs)
+      break;
+    }
+    console.log('finish.')
   }
 })()
-
-  async function writeAsCsv(options) {
-    options = options || {}
-    const dest = options.path ? fs.createWriteStream(options.path, 'utf8') : process.stdout
-    const opts = {
-      fields: ["x","現在の期間","前の期間"]
-    };
-    const transformOpts = { readableObjectMode: true, writableObjectMode: true };
-    const parser = new AsyncParser(opts, transformOpts);
-    const input = new Readable({ objectMode: true });
-    input._read = () => {}; // redundant? see update below
-    options.source.forEach(item => input.push(item));
-    input.push(null);
-    const processor = parser.fromInput(input).toOutput(dest);
-  
-    await processor.promise(false).catch(err => console.error(err));
-  }
