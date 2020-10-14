@@ -3,6 +3,24 @@ const DataSource = require('./DataSource');
 const CsvFile = require('./CsvFile');
 const QueryBuilder = require('./QueryBuilder');
 
+const terms = {
+  week: () => {return term(14)},
+  month: () => {return term(70)},
+  year: () => {
+    return term(23, {
+      key: 'months',
+      setDate: (ins) => ins.set('date', 1)
+    })
+  },
+  decade: () => {
+    return term(19, {
+      key: 'years',
+      setDate: (ins) => ins.set('date', 1),
+      setMonth: (ins) => ins.set('month', 0)
+    })
+  },
+}
+
 function term(n, options) {
   options = options || {}
   const key = options.key || 'days'
@@ -21,11 +39,11 @@ function term(n, options) {
   }
 }
 
-async function generateDataSet({term, ...others}) {
-  const {beginDate, endDate, howMany} = term()
+async function generateDataSet({...others}) {
   const qb = new QueryBuilder(others)
   const commandText = qb.sql
   const filename = `${qb.termSymbol}_${qb.dataSourceName}.csv`
+  const {beginDate, endDate, howMany} = terms[qb.termSymbol].call()
 
   const instance = new DataSource()
   const csv = new CsvFile({
@@ -51,30 +69,24 @@ async function generateDataSet({term, ...others}) {
 }
 
 (async function() {
-  await Promise.all([{
-    term: function(){return term(14)},
-  },{
-    term: function(){return term(70)},
-    termSymbol: 'month'
-  },{
-    term: function(){
-      return term(23, {
-        key: 'months',
-        setDate: (ins) => ins.set('date', 1)
-      })
-    },
-    termSymbol: 'year'
-  },{
-    term: function(){
-      return term(19, {
-        key: 'years',
-        setDate: (ins) => ins.set('date', 1),
-        setMonth: (ins) => ins.set('month', 0)
-      })
-    },
-    termSymbol: 'decade'
-  },{
-    term: function(){return term(14)},
-    dataSourceName: 'sales'
-  }].map(async x => await generateDataSet(x)))
+  const generateTuple = termSymbol => {
+    return ['customer_traffic', 'sales', 'average_spending_per_customer'].map(dataSourceName => {
+      return {dataSourceName, termSymbol}
+    })
+  }
+  const ax = ['week', 'month'].map(generateTuple)
+  // 非力なコンピュータで並列処理すると熱暴走するため分割処理
+  const bx = ['year', 'decade'].flatMap(generateTuple)
+  const cx = ax.concat(bx)
+  for (let i = 0; i < cx.length; i++) {
+    const xs = cx[i];
+    console.log(xs)
+    if(Array.isArray(xs)) {
+      await Promise.all(xs.map(async x => await generateDataSet(x)))
+    } else {
+      await generateDataSet(xs)
+      break;
+    }
+    console.log('finish.')
+  }
 })()
