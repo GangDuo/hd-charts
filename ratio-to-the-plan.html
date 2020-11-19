@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>売上予算達成率</title>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+
+<!-- Step 1) Load D3.js -->
+<script src="https://d3js.org/d3.v5.min.js"></script>
+
+<!-- Step 2) Load billboard.js with style -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/billboard.js/2.0.3/billboard.min.js"></script>
+
+<!-- Load with base style -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/billboard.js/2.0.3/billboard.min.css">
+
+<!-- Or load different theme style -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/billboard.js/2.0.3/theme/insight.min.css">
+<style>
+#barChart .fill_green { fill: green; }
+</style>
+</head>
+<body>
+<main class="container-fluid" id="app">
+  <h1>売上予算達成率</h1>
+  <div id="barChart"></div>
+
+  <div class="card">
+    <div class="card-header">HD直営店</div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-sm">
+          <div id="gaugeChart"></div>
+        </div>
+        <div class="col-sm">
+          <div id="donutChart"></div>
+        </div>
+        <div class="col-sm">
+          <div id="donutChart2"></div>
+        </div>
+      </div><!-- .row -->
+      <div class="row">
+        <div class="col-sm">
+          <div class="card text-white bg-success mb-3">
+            <div class="card-header">会員</div>
+            <div class="card-body">
+              <h5 class="card-title">{{ averageSpendingPerCustomerOfMenber }} 円</h5>
+              <p class="card-text">客単価</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm">
+          <div class="card text-white bg-danger mb-3">
+            <div class="card-header">非会員</div>
+            <div class="card-body">
+              <h5 class="card-title">{{ averageSpendingPerCustomerOfNonMenber }} 円</h5>
+              <p class="card-text">客単価</p>
+            </div>
+          </div>
+        </div>
+      </div><!-- .row -->
+      <div class="row">
+        <div class="col-sm">
+          <div id="donutChart3"></div>
+        </div>
+        <div class="col-sm">
+          <table class="table table-bordered table-hover table-sm">
+            <thead>
+              <tr class="text-center">
+                <th scope="col">来店回数</th>
+                <th scope="col">会員数</th>
+              </tr>
+            </thead>
+            <tbody v-if="sources" class="text-right">
+              <tr v-for="(source, index) in sources.menbers.howManyTimes.month" :key="source.id">
+                <td>{{index + 1}}</td>
+                <td>{{source.toLocaleString()}}</td>
+              </tr>
+              <tr>
+                <td>合計</td>
+                <td>{{sources.menbers.howManyTimes.month.reduce((ax, value) => ax + value, 0).toLocaleString()}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="col-sm">
+          <table class="table table-bordered table-hover table-sm">
+            <thead>
+              <tr class="text-center">
+                <th scope="col">利用店舗数</th>
+                <th scope="col">会員数</th>
+              </tr>
+            </thead>
+            <tbody v-if="sources" class="text-right">
+              <tr v-for="(source, index) in sources.menbers.favoriteStores.month" :key="source.id">
+                <td>{{index + 1}}</td>
+                <td>{{source.toLocaleString()}}</td>
+              </tr>
+              <tr>
+                <td>合計</td>
+                <td>{{sources.menbers.favoriteStores.month.reduce((ax, value) => ax + value, 0).toLocaleString()}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div><!-- .row -->
+      <div class="row">
+        <div class="col-sm">
+          <table class="table table-bordered table-hover table-sm">
+            <thead>
+              <tr class="text-center">
+                <th scope="col">会員グレード（仮）</th>
+                <th scope="col">有効会員数</th>
+              </tr>
+            </thead>
+            <tbody v-if="sources">
+              <tr v-for="grade in sources.menbers.grades" :key="grade.id">
+                <td>{{grade.name}}</td>
+                <td class="text-right">{{grade.value.toLocaleString()}}</td>
+              </tr>
+              <tr class="text-right">
+                <td>合計</td>
+                <td>{{sources.menbers.grades.reduce((ax, grade) => ax + grade.value, 0).toLocaleString()}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="col-sm">
+          <div id="donutChart4"></div>
+        </div>
+      </div><!-- .row -->
+    </div>
+    <div class="card-footer text-muted text-right">
+      {{ endDate }}までの売上
+    </div>
+  </div>
+
+  <div class="card text-white bg-dark mt-3 mb-3">
+    <div class="card-header">顧客を知る</div>
+    <div class="card-body">
+      <h5 class="card-title">【問１】売上金額に占める会員の割合はどれくらい？</h5>
+      <p class="card-text"></p>
+    </div>
+    <div class="card-body">
+      <h5 class="card-title">【問２】１ヶ月に何回、会員は来店するか？</h5>
+      <h6 class="card-subtitle mb-2 text-muted">同日、同店の購入は１回としてカウント。</h6>
+      <p class="card-text"></p>
+    </div>
+    <div class="card-body">
+      <h5 class="card-title">【問３】複数店舗で購入する会員は何人いるか？</h5>
+      <p class="card-text"></p>
+    </div>
+    <div class="card-body">
+      <h5 class="card-title">【問４】ロイヤルカスタマーは何人いるか？</h5>
+      <h6 class="card-subtitle mb-2 text-muted">最終購入日が３ヶ月以内で、１年以内に、購入金額３．６万円以上かつ購入回数６回以上の会員</h6>
+      <p class="card-text"></p>
+    </div>
+  </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.1.2/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script>
+  /*
+   * 数値を桁区切り（,）、小数点以下１桁を表示する
+  */
+  const toLocaleString = function(n) {
+    return n.toLocaleString(undefined, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    })
+  }
+
+  const app = new Vue({
+    el: '#app',
+    data: {
+      sources: null,
+    },
+    mounted: function() {
+      const self = this
+      axios.get('ratio_to_the_plan.json', {responseType: 'json'})
+        .then(function(response) {
+          // handle success
+          const json = response.data
+          json.stores.sort((a,b) => a.ratio - b.ratio)
+          self.sources = json
+          drawCharts(json)
+        })
+        .catch(function(error) {
+          // handle error
+          console.error(error);
+        })
+        .then(function () {
+          // always executed
+        });
+    },
+    computed: {
+      endDate: function () {
+        if(!this.sources) return ''
+        return this.sources.term.to.replace(/-/g, '/')
+      },
+      averageSpendingPerCustomerOfMenber: function () {
+        if(!this.sources) return 0
+        return toLocaleString(this.sources.menbers.averageSpendingPerCustomer)
+      },
+      averageSpendingPerCustomerOfNonMenber: function () {
+        if(!this.sources) return 0
+        return toLocaleString(this.sources.nonMenbers.averageSpendingPerCustomer)
+      }
+    },
+  });
+
+function drawCharts(json) {
+  drawMainChart(json)
+  drawDonutCharts(json)
+  drawGaugeChart({id: '#gaugeChart', value: json.ratio})
+}
+
+// 各店の売上予算達成率
+function drawMainChart(json) {
+  bb.generate({
+    size: {
+      height: document.documentElement.clientHeight * 0.7,
+    },
+    data: {
+      x: "x",
+      columns: [
+        ["x", ...json.stores.map(x => x.store)],
+        ["売上", ...json.stores.map(x => x.ratio)],
+        ["会員売上", ...json.stores.map(x => x.ratioOnlyMenber)],
+      ],
+      type: "bar", // for ESM specify as: bar()
+      types: {
+        "会員売上": "line"
+      },
+      labels: {
+        format: {
+          "売上": function(x) {
+            return d3.format('.1%')(x);
+          }
+        }
+      },
+      colors: {
+        "会員売上": "#000"
+      },
+      color: function(color, d) {
+        if(d && !d.value) {
+          return color
+        }
+        let c = "000"
+        if(d.value <= 0.3) {
+          c = "#FF0000"
+        } else if(d.value <= 0.6) {
+          c = "#F97600"
+        } else if(d.value <= 0.9) {
+          c = "#F6C600"
+        } else {
+          c = "#60B044"
+        }
+        return d3.rgb(c).toString()
+      },
+    },
+    axis: {
+      rotated: true,
+      x: {
+        type: "category"
+      }
+    },
+    //interaction: {
+    //  inputType: {
+    //    touch: {
+    //      preventDefault: true
+    //    }
+    //  }
+    //},
+    regions: [
+      {
+        axis: "y",
+        start: 1,
+        //end: 100,
+        class: "fill_green"
+      }
+    ],
+    grid: {
+      y: {
+        lines: [
+          {
+            value: 1,
+            text: "GOAL"
+          },
+        ]
+      }
+    },
+    point: {
+      show: false
+    },
+    tooltip: {
+      show: false
+    },
+    //legend: {
+    //  show: false
+    //},
+    bindto: "#barChart"
+  });
+}
+
+// 顧客構成比（金額・人数）
+function drawDonutCharts(json) {
+  bb.generate({
+    title: {
+      text: "顧客構成比（円）"
+    },
+    donut: {
+      title: "売上金額"
+    },
+    data: {
+      columns: [
+        ["会員", json.menbers.amount],
+        ["非会員", json.nonMenbers.amount]
+      ],
+      type: "donut",
+    },
+    bindto: "#donutChart"
+  });
+
+  bb.generate({
+    title: {
+      text: "顧客構成比（人）"
+    },
+    donut: {
+      title: "客数"
+    },
+    data: {
+      columns: [
+        ["会員", json.menbers.customerTraffic],
+        ["非会員", json.nonMenbers.customerTraffic]
+      ],
+      type: "donut",
+    },
+    bindto: "#donutChart2"
+  });
+
+  bb.generate({
+    title: {
+      text: "会員構成比"
+    },
+    donut: {
+      title: "来店回数"
+    },
+    data: {
+      columns: json.menbers.howManyTimes.month.reduce((ax, v, i) => {
+        const times = 1
+        if(i < times) {
+          ax.push([`${i+1}回`, v])
+        } else {
+          if(!ax[times]) {
+            ax.push([`${i+1}回以上`, v])
+          } else {
+            ax[times][1] += v
+          }
+        }
+        return ax
+      }, []),
+      type: "donut",
+    },
+    bindto: "#donutChart3"
+  });
+
+  bb.generate({
+    title: {
+      text: "会員構成比"
+    },
+    donut: {
+      title: "グレード"
+    },
+    data: {
+      columns: json.menbers.grades.concat()
+                .sort((a, b) => b.value - a.value)
+                .map(grade => [grade.name, grade.value]),
+      type: "donut",
+    },
+    bindto: "#donutChart4"
+  });
+}
+
+// 全店の売上予算達成率
+function drawGaugeChart({id, value}) {
+  value = value || 0
+  const chart = bb.generate({
+    title: {
+      text: "売上予算達成率（全店）"
+    },
+    data: {
+      columns: [
+        ["売上実績", 100 * value]
+      ],
+      type: "gauge", // for ESM specify as: gauge()
+    },
+    gauge: {},
+    color: {
+      pattern: [
+        "#FF0000",
+        "#F97600",
+        "#F6C600",
+        "#60B044"
+      ],
+      threshold: {
+        values: [
+          30,
+          60,
+          90,
+          100
+        ]
+      }
+    },
+    bindto: id
+  });
+}
+
+</script>
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js" integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI" crossorigin="anonymous"></script>
+</body>
+</html>
